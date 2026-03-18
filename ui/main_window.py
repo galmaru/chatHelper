@@ -229,20 +229,20 @@ class MainWindow(tk.Frame):
             messagebox.showwarning("파일 없음", "먼저 파일을 열어주세요.")
             return
 
-        # 참여자 필터 적용
-        filtered_messages = self._current_messages
+        # 참여자 필터: 활성화된 화자 목록 계산
+        active_senders: set[str] | None = None
         if self._participant_vars:
-            active = {name for name, var in self._participant_vars.items() if var.get()}
-            filtered_messages = [m for m in self._current_messages if m.get("sender") in active]
+            active_senders = {name for name, var in self._participant_vars.items() if var.get()}
 
-        text = "\n".join(m.get("message", "") for m in filtered_messages) if filtered_messages else self._current_text
+        # 원본 텍스트를 그대로 전달 (파서가 타임스탬프 포함 형식을 인식해야 함)
+        text = self._current_text
 
         self._progress.start(10)
         self._result_text.set_text("요약 중...")
 
         def _run():
             try:
-                result = summarize(text, length=self._length_var.get())
+                result = summarize(text, length=self._length_var.get(), include_senders=active_senders)
                 self.after(0, lambda: self._on_summary_done(result))
             except Exception as e:
                 logger.exception("요약 오류")
@@ -256,17 +256,30 @@ class MainWindow(tk.Frame):
 
         mode = result.get("mode", "offline")
         keywords = ", ".join(result.get("keywords", []))
-        participants = ", ".join(result.get("participants", []))
+        participants = result.get("participants", [])
+        topics: list = result.get("topics", [])
         action_items = result.get("action_items", [])
 
         output = []
         output.append(f"[요약 모드: {mode}]")
+        output.append(f"참여자: {', '.join(participants)}")
         output.append("")
-        output.append("■ 핵심 요약")
-        output.append(result.get("summary", ""))
+
+        if topics:
+            output.append(f"■ 주제별 요약  (총 {len(topics)}개 주제 감지됨)")
+            output.append("")
+            for topic in topics:
+                output.append(f"주제{topic['index']}. {topic['title']}")
+                for sender, condensed in topic.get("per_speaker", {}).items():
+                    output.append(f"{sender}: {condensed}")
+                output.append("")
+        else:
+            output.append("■ 핵심 요약")
+            output.append(result.get("summary", ""))
+
         output.append("")
-        output.append(f"■ 키워드: {keywords}")
-        output.append(f"■ 참여자: {participants}")
+        output.append(f"■ 전체 키워드: {keywords}")
+
         if action_items:
             output.append("")
             output.append("■ Action Items")

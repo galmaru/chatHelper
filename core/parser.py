@@ -9,6 +9,7 @@ def parse_chat(text: str) -> list[dict]:
     채팅 텍스트를 파싱하여 메시지 목록으로 반환한다.
 
     지원 형식:
+    - Teams/기타: 홍길동 [오전 8:03] 메시지
     - 카카오톡: [2024-01-01 12:00] 홍길동 : 메시지
     - 라인: 홍길동 (오전 12:00)\\n메시지
     - WhatsApp: 2024-01-01 12:00:00 - 홍길동: 메시지
@@ -22,6 +23,7 @@ def parse_chat(text: str) -> list[dict]:
         {"sender": str, "timestamp": str | None, "message": str}
     """
     parsers = [
+        _parse_teams,
         _parse_kakao,
         _parse_line,
         _parse_whatsapp,
@@ -34,6 +36,28 @@ def parse_chat(text: str) -> list[dict]:
 
     # 폴백: 전체 텍스트를 단일 메시지로 처리
     return [{"sender": "알 수 없음", "timestamp": None, "message": text.strip()}]
+
+
+def _parse_teams(text: str) -> list[dict]:
+    """Teams/기타 형식 파싱: 홍길동 [오전 8:03] 메시지"""
+    pattern = re.compile(
+        r"^(.+?)\s+\[(오전|오후|AM|PM)?\s*(\d{1,2}:\d{2})\]\s+(.+)$"
+    )
+    messages = []
+    for line in text.splitlines():
+        m = pattern.match(line.strip())
+        if m:
+            ampm = m.group(2) or ""
+            time_str = m.group(3)
+            messages.append({
+                "sender": m.group(1).strip(),
+                "timestamp": f"{ampm} {time_str}".strip(),
+                "message": m.group(4).strip(),
+            })
+
+    if len(messages) < 2:
+        return []
+    return messages
 
 
 def _parse_kakao(text: str) -> list[dict]:
